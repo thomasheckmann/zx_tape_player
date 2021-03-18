@@ -355,6 +355,9 @@ class _TapePlayerBloc {
   final List<FileModel> files;
   int _currentFileIndex;
   AudioPlayer _player = AudioPlayer(handleInterruptions: false);
+
+  final _audioSource = ConcatenatingAudioSource(children: <AudioSource>[], useLazyPreparation: true);
+
   final _backendService = getIt<BackendService>();
   final _muteControlService = getIt<MuteControlService>();
 
@@ -379,6 +382,7 @@ class _TapePlayerBloc {
 
   _TapePlayerBloc(this.files) {
     if (files.length > 0) currentFileIndex = 0;
+    _player.setAudioSource(_audioSource);
   }
 
   static Future _getAndConvertImage(ConverterComputationData data) async {
@@ -410,8 +414,14 @@ class _TapePlayerBloc {
       var file = File(wavFileName);
       if (!await file.exists()) {
         if (!force) {
+          if (_audioSource.children.isNotEmpty) {
+            await _audioSource.clear();
+            await _player.stop();
+            //await _player.setAudioSource(_audioSource);
+          }
           // await _player.setAudioSource(null, preload: false);
-          await _player.setAsset('assets/sounds/empty.wav');
+          // await _player.setAsset('assets/sounds/empty.wav');
+          // await _player.seek(Duration.zero);
           return false;
         }
         _tapePlayerController.sink
@@ -422,7 +432,11 @@ class _TapePlayerBloc {
         _tapePlayerController.sink
             .add(TapePlayerData(TapePlayerState.Idle, data));
       }
-      await _player.setFilePath(wavFileName);
+      if (_audioSource.children.isNotEmpty) {
+        await _audioSource.clear();
+      }
+      var source = AudioSource.uri(Uri.parse('file:'+wavFileName));
+      await _audioSource.add(source);
       return true;
     } catch (e) {
       _tapePlayerController.sink.add(
